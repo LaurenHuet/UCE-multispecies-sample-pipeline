@@ -1,0 +1,86 @@
+####
+# Mixed sample test 1
+####
+
+5 speices of fish (differing coverage and some closley related)
+
+Species - CepArgu - LutBita - LutBoha - LutJohn - LutQuin
+
+###
+# Cat reads together to make mixed sample 
+###
+reads in dir
+/home/lhuet/UCE-PROJECT/meta/reads
+
+cat CepArgu_R1.fastq.gz LutBita_R1.fastq.gz LutBoha_R1.fastq.gz LutJohn_R1.fastq.gz LutQuin_R1.fastq.gz > multi_R1.gz
+cat CepArgu_R2.fastq.gz LutBita_R2.fastq.gz LutBoha_R2.fastq.gz LutJohn_R2.fastq.gz LutQuin_R2.fastq.gz > multi_R2.gz
+
+##
+# Reads to use for testing
+##
+/home/lhuet/UCE-PROJECT/meta/reads
+multi_R1.gz multi_R2.gz
+
+##
+# Create reference date base (cat UCE loci together)
+##
+
+cat cepargu.fasta lutbita.fasta lutboha.fasta lutjohn.fasta lutquin.fasta > UCE_datebase-v1.fasta
+
+## 
+# Index database and align with bwa mem
+###
+
+bwa index UCE_datebase-v1.fasta
+bwa mem UCE_datebase-v1.fasta multi_R1.gz multi_R2.gz > multi_mapped.sam 
+
+## 
+# Convert sam to bam, sort and index
+###
+
+
+samtools view multi_mapped.sam | head
+
+samtools view -S -b multi_mapped.sam | samtools sort -o multi_sorted.bam 
+samtools index multi_sorted.bam
+
+##
+###
+# Pull out a list of the UCEs in the database and filter for uniques 
+###
+ grep "|uce*"  UCE_datebase-v1.fasta | awk -F'|' '{print $4}' | uniq > uce-list-remove-dupes.txt
+
+###
+# Loop through the sorted bam file and extract reads mapping to each UCE, put them in their own .bam files 
+###
+
+while read line; do
+ samtools view -h multi_sorted.bam | awk -v id="$line" -F'\t' '$4 ~ "uce:" id "|"' > "$line.tmp.sam"
+
+  echo -e "@HD\tVN:1.6\tSO:unknown" > header.sam
+  echo -e "@SQ\tSN:$line\tLN:0" >> header.sam
+
+ samtools view -b -h -t header.sam "$line.tmp.sam" > "$line.bam"
+
+  rm "$line.tmp.sam" header.sam
+done < uce-list-remove-dupes.txt
+
+###
+# convert the .bam files to fastq files
+###
+for uce in uce-*.bam; do
+base=$(basename "$uce" .bam)
+samtools fastq -1 "${base}_R1.fq" -2 "${base}_R2.fq" "$uce"
+done
+
+###
+# move to their own directories 
+###
+
+for uce in uce-*.bam; do
+    base=$(basename "$uce" .bam)
+    directory="$base"
+    mkdir -p "$directory"
+    mv "${base}_R1.fq" "${base}_R2.fq" "$directory"
+    mv "$uce" "$directory"
+done
