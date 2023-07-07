@@ -1,1 +1,1 @@
-# UCE-multispecies-sample-pipeline
+# UCE-eDNA
