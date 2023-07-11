@@ -1,3 +1,11 @@
+#########
+# This is the code to assemble independent UCE loci from a cap-sim simulated multi speices sample. 
+# This process will pull out all reads that map to each UCE loci and assemble them independently with SPAdes. 
+# To test the quality of the assembly, contigs are mapped back to the genomes where the reads were simulated from, sam flags are pulled and assessed in R using multiplicity metrics. 
+#########
+
+
+
 ####
 # Mixed sample test 1
 ####
