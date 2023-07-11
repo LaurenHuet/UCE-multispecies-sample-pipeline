@@ -84,3 +84,23 @@ for uce in uce-*.bam; do
     mv "${base}_R1.fq" "${base}_R2.fq" "$directory"
     mv "$uce" "$directory"
 done
+
+##
+# assemble the reads 
+##
+for directory in uce-*; do
+   spades.py --meta --phred-offset 33 -1 "${directory}/${directory}_R1.fq" -2 "${directory}/${directory}_R2.fq" -o "${directory}"
+done
+
+##
+# rename the contigs.fasta output to inculde the UCE name 
+##
+
+for directory in uce-*; do
+    mv "${directory}/contigs.fasta" "${directory}/${directory}_contigs.fasta"
+done
+
+
+##
+# map reads back to ref genomes
+##
