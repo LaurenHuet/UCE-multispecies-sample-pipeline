@@ -1,0 +1,38 @@
+# UCE target capture read simulation using CapSim
+
+####
+# Using whole genome data, a set of UCE probes and bowtie2, align probes to the genome
+####
+
+singularity run $SING/bowtie2:2.5.1.sif bowtie2 --local \
+                                        --very-sensitive-local \
+                                        --mp 32 \
+                                        --rdg 10,8 \
+                                        --rfg 10,8 \
+                                        -k 10000 \
+                                        -f -x LutSeba_218499_F16-0175 \
+                                        -U Acanthomorphs-UCE-1kv1.fasta \
+                                        -S Acanthomorphs-UCE-1kv1.sam
+
+
+####
+# Covert sam to bam & sort 
+####
+
+singularity run $SING/samtools_1.16.1.sif view -b -S Acanthomorphs-UCE-1kv1.sam | singularity run $SING/samtools_1.16.1.sif sort -o Acanthomorphs-UCE-1kv1.bam
+
+####
+# Using the CapSim program from the jaspa package simulate illumina target enriched reads using the reference genome and the bam file
+####
+
+jsa.sim.capsim --reference LutBoha_218479_F16-0235.fasta \
+               --probe Acanthomorphs-UCE-1kv1.bam \
+               --ID LutBoha_218479_F16-0235.fasta \ 
+               --fmedian 500 \ 
+               --miseq output \ 
+               --illen 150 \ 
+                --num 500000
+
+####
+# This will leave you with paired end illumina reads as output
+####
