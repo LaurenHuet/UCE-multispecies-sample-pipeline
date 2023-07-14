@@ -1,0 +1,52 @@
+###
+# Generate UCE reference contigs from whole genome data and a set of probes
+###
+
+###
+# Using the phyluce tool, generate a set of UCE reference contigs from whole genome data with a set of probes 
+###
+
+###
+# Convert genomes to 2bit format using faToTwoBit 
+###
+
+faToTwoBit genome.fa genome.2bit
+
+###
+# Place all genomes in their own directories and find UCE loci 
+# align a set of probes to the genome sequences using phyluce 
+### 
+
+> phyluce_probe_run_multiple_lastzs_sqlite \
+    --db [probes-name].sqlite \
+    --output [probe-name]-genome-lastz \
+    --scaffoldlist [name of your genomes in their own directories]  \
+    --genome-base-path ./ \
+    --probefile [probes].fasta \
+    --cores 
+
+###
+# Extract FASTA sequence matching UCE loci 
+# First generate a onfig file telling program where to find each genome
+# Extract FASTA data from each genome for each UCE locus with phyluce 
+###
+
+# config file to be saved as genomes.conf
+[scaffolds]
+[genome-name]:[path-to-genome-in-2bit]
+
+# Extract FASTA data 
+
+phyluce_probe_slice_sequence_from_genomes \
+    --lastz [probe-name]-genome-lastz \
+    --conf genomes.conf \
+    --flank 500 \
+    --name-pattern "[probes].fasta_v_{}.lastz.clean" \
+    --output [probe-name]-genome-fasta
+
+
+###
+# Output will be reference contigs for each UCE loci within the genome with +/- 500bp flanking region 3` and 5` of the loci. 
+# This data will be used in the downstream analysis of the multi-species samples pipelines
+###
+
