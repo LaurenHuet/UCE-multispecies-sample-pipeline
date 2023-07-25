@@ -112,3 +112,56 @@ done
 ##
 # map reads back to ref genomes
 ##
+###
+# Map the reads back to the reference genome
+# Will want to index the genomes in a . dir and link into each assembly file (aviod indexing the genome many times)
+###
+
+# Path to the indexes 
+
+CepArgu_index="/home/lhuet/UCE-PROJECT/meta/reads/indexes/CepArgu"
+LutBita_index="/home/lhuet/UCE-PROJECT/meta/reads/indexes/LutBita"
+LutBoha_index="/home/lhuet/UCE-PROJECT/meta/reads/indexes/LutBoha"
+LutJohn_index="/home/lhuet/UCE-PROJECT/meta/reads/indexes/LutJohn"
+LutQuin_index="/home/lhuet/UCE-PROJECT/meta/reads/indexes/LutQuin"
+
+
+# index the genomes
+
+bwa index CepArgu_218174_F16_0236.fasta
+bwa index LutBita_276526_F16-0187.fasta
+bwa index LutBoha_218479_F16-0235.fasta
+bwa index LutJohn_218496_F15-0241.fasta
+bwa index LutQuin.218497_OG10G.fasta
+
+###
+# Map back to genomes ~ doing the separalty for now, can wrap this up in a nextflow later on if needed 
+###
+
+for directory in uce-*; do
+    bwa mem $CepArgu_index/CepArgu_218174_F16_0236.fasta ${directory}/${directory}_contigs.fasta > ${directory}_CepArgu_mapped.sam 
+done
+
+
+for directory in uce-*; do
+    bwa mem $LutBita_index/LutBita_276526_F16-0187.fasta ${directory}/${directory}_contigs.fasta  > ${directory}_LutBita_mapped.sam 
+done
+
+
+for directory in uce-*; do
+ bwa mem $LutBoha_index/LutBoha_218479_F16-0235.fasta ${directory}/${directory}_contigs.fasta  > ${directory}_LutBoha_mapped.sam 
+done
+
+
+for directory in uce-*; do
+ bwa mem $LutJohn_index/LutJohn_218496_F15-0241.fasta ${directory}/${directory}_contigs.fasta  > ${directory}_LutJohn_mapped.sam 
+done
+
+
+for directory in uce-*; do
+ bwa mem $LutQuin_index/LutQuin.218497_OG10G.fasta ${directory}/${directory}_contigs.fasta  > ${directory}_LutQuin_mapped.sam 
+done
+
+###
+# extract the information out of each of the sam files from mapping back to both genomes and compile into a tsv file
+###
