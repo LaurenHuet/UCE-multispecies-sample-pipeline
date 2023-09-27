@@ -21,6 +21,7 @@ singularity run $SING/bowtie2:2.5.1.sif bowtie2 --local \
 
 singularity run $SING/samtools_1.16.1.sif view -b -S Acanthomorphs-UCE-1kv1.sam | singularity run $SING/samtools_1.16.1.sif sort -o Acanthomorphs-UCE-1kv1.bam
 singularity run $SING/samtools_1.16.1.sif samtools index Acanthomorphs-UCE-1kv1.bam
+
 ####
 # Using the CapSim program from the jaspa package simulate illumina target enriched reads using the reference genome and the bam file
 ####
