@@ -28,7 +28,7 @@ singularity run $SING/samtools_1.16.1.sif samtools index Acanthomorphs-UCE-1kv1.
 
 jsa.sim.capsim --reference LutBoha_218479_F16-0235.fasta \
                --probe Acanthomorphs-UCE-1kv1.bam \
-               --ID LutBoha_218479_F16-0235.fasta \ 
+               --ID LutBoha_218479_F16-0235 \ 
                --fmedian 500 \ 
                --miseq output \ 
                --illen 150 \ 
