@@ -1,0 +1,382 @@
+### This Code can be used with a set of UCE probes and list of genomes to generate similograms to show the how much variation there is in the flanking regions of the UCEs 
+
+
+code to prove the rock fish and generate simlograms
+
+Get genomes 
+
+for fasta in GCA*/*.fna; do
+
+    cp $fasta ~/uce_assembly_project/probe-sebastes/genomes
+
+done
+
+# clean up genome sequences
+
+from Bio import SeqIO
+
+#!/usr/bin/python3
+from Bio import SeqIO
+file_dict = {}
+with open("fna_file_list.txt") as fafile:
+    for line in fafile:
+        spl_file = line.split("_")
+        outfile = spl_file[2] + ".fasta"
+        file_dict[line[8:-1]] = outfile
+
+for k, v in file_dict.items():
+    with open(k, "r") as infile, open(v, "w") as outf:
+        for seq in SeqIO.parse(infile, 'fasta'):
+            seq.name = ""
+            seq.description = ""
+            outf.write(seq.format('fasta'))
+
+
+put genomes into own $directory
+cd genomes 
+for critter in *; do mkdir ${critter%.*}; mv $critter ${critter%.*}; done
+
+convert to 2bit
+for critter in *; do faToTwoBit $critter/$critter.fasta $critter/${critter%.*}.2bit; done
+
+In silico tests 
+
+phyluce_probe_run_multiple_lastzs_sqlite \
+    --db sebaste.sqlite \
+    --output sebaste-genome-lastz \
+    --probefile Actinopteri-v1-master-probe-list-DUPE-SCREENED.fasta \
+    --scaffoldlist Sitinus Skoreanus SmaligerKUI3233 Smatsubarae Smelanostomus SminiatusSEB153 SmoseriSEB5 SmystinusxSEB27 Snivosus SoculatusER03 SoculatusPAR11 SpinnigerSEB72 Sproriger Srastrelliger SRub1 SruberrimusSeb91 Ssaxicola Ssemicinctus Sserriceps Strivittatus Svulpes Satrovirens Saurora Svariegatus Szonatus Sbabcocki Sbaramenuke Sborealis ScarnatusxSEB21 ScaurinusSEB191 Scheni Schlorostictus Sciliatus Sconstellatus ScrameriSEB4 ScrameriSEB6 Sdalli Sdiaconus Sdiploproa Selongatus Sensifer SentomelasSEB16 SentomelasSEB8 Sexsul Sfasciatus Sflavidus Sglaucus Sgoodei Shelvomaculatus Shopkinsi Shubbsi Sinermis Siracundus Sjordani Sjoyneri Skiyomatsui Slevis SmaligerSEB721 Smelanops Smentella SminiatusSEB11 SminiatusSEB74 SmystinusSEB17 Snudus Soblongus137157 Spachycephalus SpinnigerSEB75 SrosaceusSEB73 Srosenblatti Sruberrimus582396486 SrubrivinctusUW156309 Staczanowskii Sthompsoni Svariabilis Szacentrus ASM191076v2 ASM191078v2 ASM191080v2 ASM433531v1 ASM433533v1 ASM433536v1 ASM47523v3 ASM90030265v1 fSebUmb1alt fSebUmb1pri Saleutianus Salutus Sauriculatus Sminor135284 SmoseriSEB9 Snebulosus Snigrocinctus SoculatusIQ03 Spaucispinis Spolyspinis Sreedi SrosaceusxSEB30 SrubrivinctusUW155382 Sschlegelii Sscythropus Ssteindachneri Sumbrosus Swilsoni ASM1467356v1 \
+    --genome-base-path ~/uce_assembly_project/probe-sebastes/genomes \
+    --identity 50 \
+    --cores 32
+
+phyluce_probe_slice_sequence_from_genomes \
+    --conf ~/uce_assembly_project/probe-sebastes/sebastes-genome.conf \
+    --lastz sebaste-genome-lastz \
+    --output sebaste-genome-fasta \
+    --flank 500 \
+    --name-pattern "Actinopteri-v1-master-probe-list-DUPE-SCREENED200.fasta_v_{}.lastz.clean"
+
+# match contigs to baits
+phyluce_assembly_match_contigs_to_probes \
+    --contigs sebaste-genome-fasta \
+    --probes Actinopteri-v1-master-probe-list-DUPE-SCREENED200.fasta \
+    --output in-silico-sebaste-genomes-lastz \
+    --min-coverage 67 \
+    --log-path log
+
+# get match counts and extract fasta informaiton 
+
+phyluce_assembly_get_match_counts \
+    --locus-db in-silico-sebaste-genomes-lastz/probe.matches.sqlite \
+    --taxon-list-config ~/uce_assembly_project/probe-sebastes/taxon-set.conf \
+    --taxon-group 'all' \
+    --output taxon-sets/all/all-taxa-incomplete.conf \
+    --log-path log \
+    --incomplete-matrix
+
+#extract fasta info for each  locus into a monolithic FASTA file
+
+phyluce_assembly_get_fastas_from_match_counts \
+    --contigs ../../sebaste-genome-fasta \
+    --locus-db ../../in-silico-sebaste-genomes-lastz/probe.matches.sqlite \
+    --match-count-output all-taxa-incomplete.conf \
+    --output all-taxa-incomplete.fasta \
+    --incomplete-matrix all-taxa-incomplete.incomplete \
+    --log-path log
+
+#explode monolithic fasta file 
+
+phyluce_assembly_explode_get_fastas_file \
+    --input all-taxa-incomplete.fasta \
+    --output exploded-fastas-uce \
+    --by-taxon
+
+# get summary stats on the FASTAS
+for i in exploded-fastas-uce/*.fasta;
+do
+    phyluce_assembly_get_fasta_lengths --input $i --csv;
+done
+
+
+
+#concatenate the files
+cat exploded-fastas-uce/* > insilico-incomplete.fasta
+
+#explode the fastas 
+
+phyluce_assembly_explode_get_fastas_file \
+    --input insilico-incomplete.fasta \
+    --output exploded-uce-loci
+
+#make mafft directory 
+mkdir mafft_alns log
+
+# remove single seq from exploded_uce_loci 
+grep -c ">" *.fasta | awk -F ':' '$2==1{print $1}' | xargs -I {} mv {} ../exploded_uce_loci_single_seq
+
+
+for i in *.unaligned.fasta; do
+mafft --auto --adjustdirection --thread 20 ${i} > ../mafft_alns/${i%.*}.aligned.fasta;
+done
+
+#  rename the alignments before cleaning and subsettings - remove "unaligned" from the file name 
+## CONVERT FROM FASTA TO NEXUS
+
+cd mafft_alns
+for file in *unaligned.aligned.fasta ; do mv $file ${file//unaligned.aligned.fasta/fasta} ; done
+
+
+### GET INFORATIVE SITES 
+# merge exon + uce and do combo
+phyluce_align_get_informative_sites \
+                --alignments mafft_alns \
+                --cores 20 \
+                --input-format fasta \
+                --log-path log \
+                --output total-edge-50-informative-sites 
+
+phyluce_align_convert_one_align_to_another \
+                        --alignments mafft_alns \
+                        --output mafft-nexus \
+                        --output-format nexus \
+                        --input-format fasta 
+
+
+singularity run $SING/phyluce-1.7.1.sif phyluce_align_get_smilogram_from_alignments --alignments mafft-internal-Smicroadriaticum-subset --output-file smilogram-microadriaticum --output-database data --log log --output-missing dataphyluce_align_get_smilogram_from_alignments     --alignments mafft_alns     --output-file sebastes_smilogram     --output-database data     --log log     --output-missing data
+
+
+phyluce_align_get_smilogram_from_alignments --alignments mafft_nexus --output-file sebastes_smilogram200 --output-database data --log log --output-missing data
+phyluce_align_get_smilogram_from_alignments --alignments mafft-nexus --output-file sebastes_smilogram200 --output-database data --log log --output-missing data
+
+
+
+### indiviudal level probing for pop level ID miniatus
+
+working DIR
+~/uce_assembly_project/probe-sebaste/miniatus
+
+In silico tests 
+
+phyluce_probe_run_multiple_lastzs_sqlite \
+    --db sebaste.sqlite \
+    --output sebaste-genome-lastz \
+    --probefile Actinopteri-v1-master-probe-list-DUPE-SCREENED200.fasta \
+    --scaffoldlist SminiatusSEB11 SminiatusSEB153 SminiatusSEB74 \
+    --genome-base-path ~/uce_assembly_project/probe-sebastes/miniatus-genomes \
+    --identity 50 \
+    --cores 32
+
+
+/home/lhuet/uce_assembly_project/probe-sebastes/genomes/SminiatusSEB11/SminiatusSEB11.2bit
+
+phyluce_probe_slice_sequence_from_genomes \
+    --conf miniatus-genome.conf \
+    --lastz sebaste-genome-lastz \
+    --output sebaste-genome-fasta \
+    --flank 500 \
+    --name-pattern "Actinopteri-v1-master-probe-list-DUPE-SCREENED200.fasta_v_{}.lastz.clean"
+
+# match contigs to baits
+phyluce_assembly_match_contigs_to_probes \
+    --contigs sebaste-genome-fasta \
+    --probes Actinopteri-v1-master-probe-list-DUPE-SCREENED200.fasta \
+    --output in-silico-sebaste-genomes-lastz \
+    --min-coverage 67 \
+    --log-path log
+
+# get match counts and extract fasta informaiton 
+
+phyluce_assembly_get_match_counts \
+    --locus-db in-silico-sebaste-genomes-lastz/probe.matches.sqlite \
+    --taxon-list-config ~/uce_assembly_project/probe-sebastes/taxon-set.conf \
+    --taxon-group 'all' \
+    --output taxon-sets/all/all-taxa-incomplete.conf \
+    --log-path log \
+    --incomplete-matrix
+
+#extract fasta info for each  locus into a monolithic FASTA file
+
+phyluce_assembly_get_fastas_from_match_counts \
+    --contigs ../../sebaste-genome-fasta \
+    --locus-db ../../in-silico-sebaste-genomes-lastz/probe.matches.sqlite \
+    --match-count-output all-taxa-incomplete.conf \
+    --output all-taxa-incomplete.fasta \
+    --incomplete-matrix all-taxa-incomplete.incomplete \
+    --log-path log
+
+#explode monolithic fasta file 
+
+phyluce_assembly_explode_get_fastas_file \
+    --input all-taxa-incomplete.fasta \
+    --output exploded-fastas-uce \
+    --by-taxon
+
+# get summary stats on the FASTAS
+for i in exploded-fastas-uce/*.fasta;
+do
+    phyluce_assembly_get_fasta_lengths --input $i --csv;
+done
+
+
+
+#concatenate the files
+cat exploded-fastas-uce/* > insilico-incomplete.fasta
+
+#explode the fastas 
+
+phyluce_assembly_explode_get_fastas_file \
+    --input insilico-incomplete.fasta \
+    --output exploded-uce-loci
+
+#make mafft directory 
+mkdir mafft_alns log
+
+# remove single seq from exploded_uce_loci 
+grep -c ">" *.fasta | awk -F ':' '$2==1{print $1}' | xargs -I {} mv {} ../exploded_uce_loci_single_seq
+
+
+for i in *.unaligned.fasta; do
+mafft --auto --adjustdirection --thread 20 ${i} > ../mafft_alns/${i%.*}.aligned.fasta;
+done
+
+#  rename the alignments before cleaning and subsettings - remove "unaligned" from the file name 
+## CONVERT FROM FASTA TO NEXUS
+
+cd mafft_alns
+for file in *unaligned.aligned.fasta ; do mv $file ${file//unaligned.aligned.fasta/fasta} ; done
+
+
+### GET INFORATIVE SITES 
+# merge exon + uce and do combo
+phyluce_align_get_informative_sites \
+                --alignments mafft_alns \
+                --cores 20 \
+                --input-format fasta \
+                --log-path log \
+                --output rockfish-informative-sites200 
+
+
+singularity run $SING/phyluce-1.7.1.sif phyluce_align_get_smilogram_from_alignments --alignments mafft-internal-Smicroadriaticum-subset --output-file smilogram-microadriaticum --output-database data --log log --output-missing dataphyluce_align_get_smilogram_from_alignments     --alignments mafft_alns     --output-file sebastes_smilogram     --output-database data     --log log     --output-missing data
+
+phyluce_align_get_smilogram_from_alignments --alignments mafft-nexus --output-file oculatus_smilogram --output-database data --log log --output-missing data
+phyluce_align_get_smilogram_from_alignments --alignments mafft_alns --output-file sebastes_smilogram --output-database data --log log --output-missing data
+
+
+### indiviudal level probing for pop level ID
+
+working DIR
+~/uce_assembly_project/probe-sebastes/probe-oculatus
+
+In silico tests 
+
+phyluce_probe_run_multiple_lastzs_sqlite \
+    --db sebaste.sqlite \
+    --output sebaste-genome-lastz \
+    --probefile Actinopteri-v1-master-probe-list-DUPE-SCREENED200.fasta \
+    --scaffoldlist SoculatusER03 SoculatusIQ03 SoculatusPAR11 \
+    --genome-base-path ~/uce_assembly_project/probe-sebastes/oculatus-genomes \
+    --identity 50 \
+    --cores 32
+
+
+/home/lhuet/uce_assembly_project/probe-sebastes/genomes/SminiatusSEB11/SminiatusSEB11.2bit
+
+phyluce_probe_slice_sequence_from_genomes \
+    --conf oculatu-genome.conf \
+    --lastz sebaste-genome-lastz \
+    --output sebaste-genome-fasta \
+    --flank 500 \
+    --name-pattern "Actinopteri-v1-master-probe-list-DUPE-SCREENED200.fasta_v_{}.lastz.clean"
+
+# match contigs to baits
+phyluce_assembly_match_contigs_to_probes \
+    --contigs sebaste-genome-fasta \
+    --probes Actinopteri-v1-master-probe-list-DUPE-SCREENED200.fasta \
+    --output in-silico-sebaste-genomes-lastz \
+    --min-coverage 67 \
+    --log-path log
+
+# get match counts and extract fasta informaiton 
+
+phyluce_assembly_get_match_counts \
+    --locus-db in-silico-sebaste-genomes-lastz/probe.matches.sqlite \
+    --taxon-list-config taxon-set.conf \
+    --taxon-group 'all' \
+    --output taxon-sets/all/all-taxa-incomplete.conf \
+    --log-path log \
+    --incomplete-matrix
+
+#extract fasta info for each  locus into a monolithic FASTA file
+
+phyluce_assembly_get_fastas_from_match_counts \
+    --contigs ../../sebaste-genome-fasta \
+    --locus-db ../../in-silico-sebaste-genomes-lastz/probe.matches.sqlite \
+    --match-count-output all-taxa-incomplete.conf \
+    --output all-taxa-incomplete.fasta \
+    --incomplete-matrix all-taxa-incomplete.incomplete \
+    --log-path log
+
+#explode monolithic fasta file 
+
+phyluce_assembly_explode_get_fastas_file \
+    --input all-taxa-incomplete.fasta \
+    --output exploded-fastas-uce \
+    --by-taxon
+
+# get summary stats on the FASTAS
+for i in exploded-fastas-uce/*.fasta;
+do
+    phyluce_assembly_get_fasta_lengths --input $i --csv;
+done
+
+
+
+#concatenate the files
+cat exploded-fastas-uce/* > insilico-incomplete.fasta
+
+#explode the fastas 
+
+phyluce_assembly_explode_get_fastas_file \
+    --input insilico-incomplete.fasta \
+    --output exploded-uce-loci
+
+#make mafft directory 
+mkdir mafft_alns log
+
+# remove single seq from exploded_uce_loci 
+grep -c ">" *.fasta | awk -F ':' '$2==1{print $1}' | xargs -I {} mv {} ../exploded_uce_loci_single_seq
+
+
+for i in *.unaligned.fasta; do
+mafft --auto --adjustdirection --thread 20 ${i} > ../mafft_alns/${i%.*}.aligned.fasta;
+done
+
+#  rename the alignments before cleaning and subsettings - remove "unaligned" from the file name 
+## CONVERT FROM FASTA TO NEXUS
+
+cd mafft_alns
+for file in *unaligned.aligned.fasta ; do mv $file ${file//unaligned.aligned.fasta/fasta} ; done
+
+
+### GET INFORATIVE SITES 
+# merge exon + uce and do combo
+phyluce_align_get_informative_sites \
+                --alignments mafft_alns \
+                --cores 20 \
+                --input-format fasta \
+                --log-path log \
+                --output oculatus-informative-sites 
+
+ phyluce_align_convert_one_align_to_another \
+                        --alignments mafft_alns \
+                        --output mafft-nexus \
+                        --output-format nexus \
+                        --input-format fasta 
+
+singularity run $SING/phyluce-1.7.1.sif phyluce_align_get_smilogram_from_alignments --alignments mafft-internal-Smicroadriaticum-subset --output-file smilogram-microadriaticum --output-database data --log log --output-missing dataphyluce_align_get_smilogram_from_alignments     --alignments mafft_alns     --output-file sebastes_smilogram     --output-database data     --log log     --output-missing data
+
+
+phyluce_align_get_smilogram_from_alignments --alignments mafft-nexus --output-file oculatus_smilogram --output-database data --log log --output-missing data
+
+
