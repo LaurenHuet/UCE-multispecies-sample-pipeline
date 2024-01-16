@@ -1,0 +1,7 @@
+{
+    "input": "\/home\/lhuet\/uce_assembly_project\/read-sim\/nf-core\/sample_sheet.csv",
+    "email": "lauren.huet@uwa.edu.au",
+    "multiqc_title": "rockfish",
+    "target_capture": true,
+    "probe_fasta": "\/home\/lhuet\/uce_assembly_project\/read-sim\/Actinopteri-v1-master-probe-list-DUPE-SCREENED200.fasta"
+}
