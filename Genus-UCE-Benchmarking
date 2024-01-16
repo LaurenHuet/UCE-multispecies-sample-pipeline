@@ -1,0 +1,229 @@
+## This is the cumluation of code and steps taken to benchmark different metagenomics assemblers against
+## simulated UCE data. This data set is at the genus level, and contains >100 species of rockfish. 
+
+# two bench marks are being performed at different levels of coverage.
+
+## 1.  250,000 reads simulated per species (deemed to be low coverage)
+
+
+##rename the samples 
+rundir=~/uce_assembly_project/read-sim/reads
+
+for i in $rundir/*; do
+
+sample=$(basename $i)
+
+reads_dir=$rundir/$sample/capsim_illumina
+ 
+mv $reads_dir/sample_1_1.fastq.gz $reads_dir/$sample.1.fastq.gz
+mv $reads_dir/sample_1_2.fastq.gz $reads_dir/$sample.2.fastq.gz
+
+done 
+
+## cat samples together 
+
+rundir=~/uce_assembly_project/read-sim/reads
+
+for i in $rundir/*; do
+
+sample=$(basename $i)
+
+reads_dir=$rundir/$sample/capsim_illumina
+
+cat $reads_dir/$sample.1.fastq.gz >> $rundir/rockfish_genus.R1.fastq.gz
+cat $reads_dir/$sample.2.fastq.gz >> $rundir/rockfish_genus.R2.fastq.gz
+
+done 
+
+## reads per sample
+zcat rockfish_genus2.R1.fastq.gz | grep -c "^@"
+51500000
+zcat rockfish_genus.R2.fastq.gz | grep -c "^@"
+51500000
+
+size of the files 
+-rw-rw-r-- 1 lhuet lhuet 3.2G Nov 24 01:37 rockfish_genus.R1.fastq.gz
+-rw-rw-r-- 1 lhuet lhuet 3.2G Nov 24 01:37 rockfish_genus.R2.fastq.gz
+
+### ASSEMBLY
+#1. SPADES (cd )~/uce_assembly_project/assembly/spades
+
+metaspades.py -1 rockfish_genus.R1.fastq.gz	-2 rockfish_genus.R2.fastq.gz --phred-offset 33 -o results -m 400 -t 32
+
+
+###
+#2. MEGAHIT (cd) ~/uce_assembly_project/assembly/megahit
+
+megahit -1 rockfish_genus.R1.fastq.gz -2 rockfish_genus.R2.fastq.gz --no-mercy -o output_dir
+
+2023-11-24 03:01:58 - 65554 contigs, total 24610320 bp, min 200 bp, max 5984 bp, avg 375 bp, N50 353 bp
+2023-11-24 03:01:59 - ALL DONE. Time elapsed: 1427.715376 seconds 
+
+# There is 13489 contigs that are >=400bp
+# there are 33112 contigs that are >=300bp 
+
+#next test -> 
+
+megahit -1 rockfish_genus.R1.fastq.gz -2 rockfish_genus.R2.fastq.gz --presets meta-large -o output_dir2
+#again v small contigs
+#2023-11-24 06:20:19 - 89000 contigs, total 30880419 bp, min 200 bp, max 6298 bp, avg 346 bp, N50 328 bp
+#2023-11-24 06:20:20 - ALL DONE. Time elapsed: 3562.628886 seconds 
+
+## There are 13881 contigs that are >=400bp
+## There are 38146 contigs that are >=300bp
+
+
+next test
+
+megahit -1 rockfish_genus.R1.fastq.gz -2 rockfish_genus.R2.fastq.gz --cleaning-rounds 1 --disconnect-ratio 0 -o output_dir3
+## other options to test include 
+# --presets meta-large: if the metagenome is complex (i.e., bio-diversity is high, for example soil metagenomes)
+# -cleaning-rounds 1 --disconnect-ratio 0: get less pruned assembly (usually shorter contigs)
+
+2023-11-24 08:00:37 - 112498 contigs, total 35308162 bp, min 200 bp, max 2684 bp, avg 313 bp, N50 310 bp
+2023-11-24 08:00:38 - ALL DONE. Time elapsed: 3666.787241 seconds 
+
+There are 16275 contigs that are >=400bp
+there are 47535 contigs that are >=300bp 
+
+
+contig length distribution 
+
+
+
+awk '/^>/ { if (seq) { print name, length(seq); } name = substr($1, 2); seq = ""; next } { seq = seq $0 } END { if (seq) { print name, length(seq); } }' final.contigs.fa > contig_lengths.txt
+
+
+
+
+##
+#3. Metavelvet DL
+
+#ASSEMBLY MODULE:  proving exceptionally hard to install and use.. removing from analysis, too time consuming) 
+
+1. Construct a de Bruijn graph using Velvet functions.
+
+   ~$ velveth Assem 31 -shortPaired -fastq rockfish_genus.R1.fastq.gz  rockfish_genus.R2.fastq.gz
+
+   ~$ velvetg Assem -ins_length 500 -read_trkg yes -exp_cov auto
+
+2. Extract candidates of chimeric nodes.
+   ~$ metavelvete Assem -ins_length 500
+
+3. Extract features from candidates of chimeric nodes.
+   Extract Features
+
+      ~$ perl FeatureExtractPredict.perl [out-dir]/meta-velvetg.subgraph__TitleChimeraNodeCandidates \
+      [out-dir]/Features [out-dir]/Features3Class [out-dir]/ChimeraNodeName
+
+4. Do classification using a trained deep learning model
+
+   ~$ python metavelvet_dl_inference.py [data_directory] [model_path] [output_path]
+
+5. Do assembly
+   ~$ metavelvetg [out-dir] -ins_length [insert-length]#
+
+
+
+
+## Map the reads back to the genome for to check how the assembly went
+
+# notes remove contigs that are less than 300bp in length. 
+
+
+rundir=/home/lhuet/uce_assembly_project/contig-mapping/genomes
+for i in $rundir/*; do
+if [ -d "$i" ]; then
+sample=$(basename "$i")
+fasta=$rundir/$sample/$sample.fasta
+fasta_dir=$rundir/$sample
+rundir=/home/lhuet/uce_assembly_project/contig-mapping/genomes
+cd $fasta_dir
+
+/home/lhuet/uce_assembly_project/contig-mapping/genomes/index_genome.sh "$rundir" "$sample" "$fasta"
+
+fi
+done
+index_genome.sh
+#!/bin/bash 
+conda activate bwa
+rundir=$1
+sample=$2
+fasta=$3
+bwa index $fasta $sample
+
+#### Map the contigs back to the genomes. 
+
+1. MEGAHIT 1.
+
+rundir=/home/lhuet/uce_assembly_project/contig-mapping/genomes
+for i in $rundir/*; do
+if [ -d "$i" ]; then
+sample=$(basename "$i")
+echo $sample
+fasta=$rundir/$sample/$sample.fasta
+echo $fasta
+rundir=/home/lhuet/uce_assembly_project/contig-mapping/genomes
+megahit1_dir=~/uce_assembly_project/assembly/megahit/output_dir
+assembly=$megahit1_dir/rockfish_genus.mh.fa
+echo $assembly
+contigs_dir=/home/lhuet/uce_assembly_project/contig-mapping/contigs
+echo $contigs_dir
+/home/lhuet/uce_assembly_project/contig-mapping/contigs/contig_map.sh "$sample" "$fasta" "$assembly" "$contigs_dir"
+
+fi
+done
+
+#!/bin/bash 
+fasta=$1
+assembly=$2
+sample=$3
+contigs_dir=$5
+
+bwa mem $fasta $contigs > $contigs_dir/align_$sample.sam
+
+
+
+
+
+
+## 2.  400,000 reads simulated per species (deemed to be low coverage)
+
+##rename the samples 
+rundir=~/uce_assembly_project/read-sim/reads
+
+for i in $rundir/*; do
+
+sample=$(basename $i)
+
+reads_dir=$rundir/$sample/capsim_illumina
+ 
+mv $reads_dir/sample_1_1.fastq.gz $reads_dir/$sample.1.fastq.gz
+mv $reads_dir/sample_1_2.fastq.gz $reads_dir/$sample.2.fastq.gz
+
+done 
+
+## cat samples together 
+
+rundir=~/uce_assembly_project/read-sim/reads
+
+for i in $rundir/*; do
+
+sample=$(basename $i)
+
+reads_dir=$rundir/$sample/capsim_illumina
+
+cat $reads_dir/$sample.1.fastq.gz >> $rundir/rockfish_genus2.R1.fastq.gz
+cat $reads_dir/$sample.2.fastq.gz >> $rundir/rockfish_genus2.R2.fastq.gz
+
+done 
+
+## reads per sample
+zcat rockfish_genus2.R1.fastq.gz | grep -c "^@"
+52000000
+zcat rockfish_genus.R2.fastq.gz | grep -c "^@"
+52000000
+
+size of the files 
+-rw-rw-r-- 1 lhuet lhuet 3.2G Jan 12 03:48 rockfish_genus2.R1.fastq.gz
+-rw-rw-r-- 1 lhuet lhuet 3.2G Jan 12 03:48 rockfish_genus2.R2.fastq.gz
